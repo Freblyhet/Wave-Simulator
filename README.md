@@ -143,21 +143,6 @@ Wave-Simulator/
 2. Add a source and observe how waves reflect off barriers
 3. Try creating a parabolic reflector shape
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
-
-## License
-
-This project is open source. Feel free to use, modify, and distribute according to your needs.
-
-## Support
-
-If you encounter any issues or have questions:
-1. Check the [Issues](https://github.com/Freblyhet/Wave-Simulator/issues) page
-2. Create a new issue if your problem isn't already documented
-3. Provide details about your system and the steps to reproduce any bugs
-
 ## Author
 
 Adam Blyberg  
