@@ -1,5 +1,6 @@
 # Wave Simulator
 
+<<<<<<< HEAD
 A real-time 2D wave propagation simulator built with OpenGL and C++. Experience classic wave phenomena like interference, diffraction, and reflection through an interactive visualization.
 
 ## 🌊 Features
@@ -164,3 +165,8 @@ If you encounter any issues or have questions:
 ---
 
 **Enjoy exploring the fascinating world of wave physics!** 🌊✨
+
+## 👤 Author
+
+**Adam Blyberg**  
+[GitHub](https://github.com/Freblyhet)
