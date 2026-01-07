@@ -1,0 +1,26 @@
+# Build artifacts
+Wave Sim
+*.o
+*.a
+*.dylib
+
+# System files
+.DS_Store
+*.DS_Store
+
+# IDE files
+.vscode/settings.json
+.vscode/launch.json
+imgui.ini
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# Logs
+*.log
+
+# Platform specific
+Thumbs.db
+ehthumbs.db
