@@ -1,11 +1,8 @@
 # Wave Simulator
 
-<<<<<<< HEAD
 A real-time 2D wave propagation simulator built with OpenGL and C++. Experience classic wave phenomena like interference, diffraction, and reflection through an interactive visualization.
 
-## 🌊 Features
-
-![Wave Simulation Demo](WaveSimScreenshots/wave1.png)
+## Features
 
 - **Real-time wave simulation** using the 2D wave equation
 - **Interactive wave sources** with customizable frequency and amplitude
@@ -18,25 +15,24 @@ A real-time 2D wave propagation simulator built with OpenGL and C++. Experience 
   - Reflection demonstrations
   - Circular wave arena
 
-## 🖼️ Gallery
+## Screenshots
 
-### Double Slit Experiment
+![Wave Simulation Demo](WaveSimScreenshots/wave1.png)
+
 ![Double Slit](WaveSimScreenshots/wave2.png)
 
-### Wave Interference
 ![Interference Pattern](WaveSimScreenshots/wave3.png)
 
-### Reflection and Barriers
 ![Wave Reflection](WaveSimScreenshots/wave4.png)
 
-## 🛠️ Requirements
+## Requirements
 
 - **macOS** (tested on macOS with Apple Silicon)
 - **Xcode Command Line Tools** or equivalent C++ compiler
 - **OpenGL 3.3+** support
 - **Homebrew** (recommended for dependency management)
 
-## 📦 Dependencies
+## Dependencies
 
 This project uses the following libraries (included in the repository):
 - **GLFW 3.4** - Window management and input handling
@@ -44,7 +40,7 @@ This project uses the following libraries (included in the repository):
 - **Dear ImGui** - Immediate mode GUI for controls
 - **GLM** - OpenGL mathematics library
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Clone the Repository
 ```bash
@@ -74,7 +70,7 @@ Or if you have VS Code with the provided tasks.json:
 ./Wave\ Sim
 ```
 
-## 🎮 How to Use
+## How to Use
 
 ### Basic Controls
 - **Left Mouse**: Interact based on selected tool
@@ -99,7 +95,7 @@ The control panel on the left provides:
 - **Visual options**: Color modes, grid overlay, display toggles
 - **Source management**: Individual control over each wave source
 
-## 🔬 Physics
+## Physics
 
 The simulator implements the 2D wave equation:
 ```
@@ -111,7 +107,7 @@ Where:
 - `c` is the wave speed (adjustable in the GUI)
 - Damping is applied to simulate energy dissipation
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 Wave-Simulator/
@@ -130,7 +126,7 @@ Wave-Simulator/
 └── glfw-3.4/              # GLFW source (reference)
 ```
 
-## 🎯 Example Experiments
+## Example Experiments
 
 ### 1. Double Slit Experiment
 1. Load the "Double Slit" preset
@@ -147,26 +143,26 @@ Wave-Simulator/
 2. Add a source and observe how waves reflect off barriers
 3. Try creating a parabolic reflector shape
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
 
-## 📄 License
+## License
 
 This project is open source. Feel free to use, modify, and distribute according to your needs.
 
-## 🙋‍♂️ Support
+## Support
 
 If you encounter any issues or have questions:
 1. Check the [Issues](https://github.com/Freblyhet/Wave-Simulator/issues) page
 2. Create a new issue if your problem isn't already documented
 3. Provide details about your system and the steps to reproduce any bugs
 
+## Author
+
+Adam Blyberg  
+[GitHub](https://github.com/Freblyhet)
+
 ---
 
-**Enjoy exploring the fascinating world of wave physics!** 🌊✨
-
-## 👤 Author
-
-**Adam Blyberg**  
-[GitHub](https://github.com/Freblyhet)
+**Enjoy exploring the fascinating world of wave physics!**
