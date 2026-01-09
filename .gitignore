@@ -24,3 +24,9 @@ imgui.ini
 # Platform specific
 Thumbs.db
 ehthumbs.db
+# Build directory
+build/
+
+# Executables
+Wave Sim
+WaveSimulator

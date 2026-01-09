@@ -10,45 +10,45 @@ A sophisticated real-time 2D wave propagation simulator built with OpenGL and C+
 
 
 
-![Wave Simulation](WaveSimScreenshots/wave1.png)- **Real-time wave simulation** using the 2D wave equation
+![Wave Simulation](screenshots/wave1.png)- **Real-time wave simulation** using the 2D wave equation
 
 - **Interactive wave sources** with customizable frequency and amplitude
 
-![Wave Patterns](WaveSimScreenshots/wave2.png)- **Dynamic wall drawing** for creating barriers and obstacles
+![Wave Patterns](screenshots/wave2.png)- **Dynamic wall drawing** for creating barriers and obstacles
 
 - **Multiple visualization modes** including rainbow, grayscale, and color gradients
 
-![Complex Interactions](WaveSimScreenshots/wave3.png)- **Built-in presets** demonstrating classic wave phenomena:
+![Complex Interactions](screenshots/wave3.png)- **Built-in presets** demonstrating classic wave phenomena:
 
   - Double-slit experiment
 
-![Interface Overview](WaveSimScreenshots/wave4.png)  - Ripple tank simulation
+![Interface Overview](screenshots/wave4.png)  - Ripple tank simulation
 
   - Wave interference patterns
 
-![Advanced Features](WaveSimScreenshots/wave5.png)  - Reflection demonstrations
+![Advanced Features](screenshots/wave5.png)  - Reflection demonstrations
 
   - Circular wave arena
 
-![Experimental Setup](WaveSimScreenshots/wave6.png)
+![Experimental Setup](screenshots/wave6.png)
 
 ## Screenshots
 
 ## Features
 
-![Wave Simulation Demo](WaveSimScreenshots/wave1.png)
+![Wave Simulation Demo](screenshots/wave1.png)
 
 ### Advanced Wave Simulation
 
-- **Real-time wave propagation** using the 2D wave equation with optimized performance![Double Slit](WaveSimScreenshots/wave2.png)
+- **Real-time wave propagation** using the 2D wave equation with optimized performance![Double Slit](screenshots/wave2.png)
 
 - **Interactive wave sources** with customizable frequency and amplitude controls
 
-- **Dynamic wall drawing** for creating complex barriers and waveguides![Interference Pattern](WaveSimScreenshots/wave3.png)
+- **Dynamic wall drawing** for creating complex barriers and waveguides![Interference Pattern](screenshots/wave3.png)
 
 - **High-resolution grid** (512x512) for detailed wave behavior
 
-- **Adjustable physics parameters** including wave speed, damping, and time scaling![Wave Reflection](WaveSimScreenshots/wave4.png)
+- **Adjustable physics parameters** including wave speed, damping, and time scaling![Wave Reflection](screenshots/wave4.png)
 
 
 
@@ -82,7 +82,7 @@ A sophisticated real-time 2D wave propagation simulator built with OpenGL and C+
 
 - **Visual notification system** confirming successful captures
 
-- **Organized file management** in dedicated WaveSimScreenshots directory## Quick Start
+- **Organized file management** in dedicated screenshots directory## Quick Start
 
 - **Perfect for documentation** and sharing experimental results
 
@@ -246,7 +246,7 @@ clang++ -std=c++17 src/WaveSim.cpp src/glad.c \∂²u/∂t² = c²(∂²u/∂x²
 
 6. **Document your experiments** - Press 'P' to take screenshots of interesting patterns│   └── shaders/            # GLSL shader files
 
-├── WaveSimScreenshots/     # Demo images
+├── screenshots/     # Demo images
 
 ## Educational Applications└── glfw-3.4/              # GLFW source (reference)
 
