@@ -10,6 +10,11 @@
 #include <cmath>
 #include <algorithm>
 #include <random>
+#include <cstdlib>
+#include <chrono>
+#include <iomanip>
+#include <sstream>
+#include <filesystem>
 
 // Window
 const int SCREEN_WIDTH = 1400;
@@ -37,7 +42,8 @@ enum class Tool {
     REMOVE_SOURCE,
     DRAW_WALL,
     ERASE_WALL,
-    SNAP_WALL
+    SNAP_WALL,
+    INTERACT
 };
 
 // Simulation state
@@ -54,7 +60,7 @@ struct Simulation {
     float dt = 1.0f / 60.0f;
     
     // Tools and interaction
-    Tool currentTool = Tool::ADD_SOURCE;
+    Tool currentTool = Tool::INTERACT;
     float newSourceFreq = 3.0f;
     float newSourceAmp = 1.5f;
     
@@ -80,6 +86,8 @@ struct Simulation {
     bool showWalls = true;
     bool showGrid = false;
     int gridSpacing = 32;  // Grid lines every N pixels
+    int visualMode = 0;  // 0=Rainbow, 1=Grayscale, 2=Blue-Red, 3=Green-Orange
+    float contrast = 1.5f;
     
     Simulation() {
         u.resize(GRID_SIZE * GRID_SIZE, 0.0f);
@@ -87,6 +95,10 @@ struct Simulation {
         u_prev2.resize(GRID_SIZE * GRID_SIZE, 0.0f);
         walls.resize(GRID_SIZE * GRID_SIZE, false);
     }
+    
+    // Screenshot notification system
+    bool showScreenshotNotification = false;
+    std::chrono::steady_clock::time_point screenshotNotificationTime;
 } g_sim;
 
 // OpenGL
@@ -184,6 +196,40 @@ void clearSources() {
     g_sim.sources.clear();
 }
 
+// Screenshot functionality
+void takeScreenshot() {
+    // Create screenshots directory if it doesn't exist
+    std::string projectRoot = std::filesystem::current_path().string();
+    std::string screenshotsDir = projectRoot + "/WaveSimScreenshots";
+    std::filesystem::create_directories(screenshotsDir);
+    
+    // Generate timestamp for filename
+    auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+    
+    std::ostringstream filename;
+    std::tm* tm = std::localtime(&time_t);
+    filename << "wave_sim_" 
+             << std::put_time(tm, "%Y%m%d_%H%M%S_") 
+             << std::setfill('0') << std::setw(3) << ms.count() 
+             << ".png";
+    
+    std::string fullPath = screenshotsDir + "/" + filename.str();
+    
+    // Use macOS screencapture utility
+    std::string command = "screencapture -x " + fullPath;
+    int result = std::system(command.c_str());
+    
+    if (result == 0) {
+        std::cout << "📸 Screenshot saved: " << filename.str() << std::endl;
+        // Show notification
+        g_sim.showScreenshotNotification = true;
+        g_sim.screenshotNotificationTime = std::chrono::steady_clock::now();
+    } else {
+        std::cout << "❌ Screenshot failed" << std::endl;
+    }
+}
 // Load presets
 void loadPreset(const std::string& name) {
     clearWaves();
@@ -593,83 +639,169 @@ void renderGrid() {
     
     glDisable(GL_BLEND);
 }
-
-// GUI
 void renderGUI() {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
     
+    // Modern window styling - matches Particle Life
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(450, 850), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(450, 820), ImGuiCond_FirstUseEver);
     
-    ImGui::Begin("Wave Simulator");
-    
-    // Status
-    ImGui::Text("Wave Sources: %zu", g_sim.sources.size());
-    ImGui::Text("Simulation Time: %.2f s", g_sim.time);
-    ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
-    ImGui::Separator();
-    
-    // Controls
-    if (ImGui::Button(g_sim.paused ? "▶ Resume" : "⏸ Pause", ImVec2(100, 0))) {
-        g_sim.paused = !g_sim.paused;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Clear Waves", ImVec2(120, 0))) {
-        clearWaves();
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Reset All", ImVec2(100, 0))) {
-        clearWaves();
-        clearWalls();
-        clearSources();
-    }
-    
-    ImGui::SliderFloat("Time Scale", &g_sim.timeScale, 0.1f, 5.0f, "%.1fx");
-    ImGui::Separator();
-    
-    // Presets
-    if (ImGui::CollapsingHeader("Presets", ImGuiTreeNodeFlags_DefaultOpen)) {
-        if (ImGui::Button("Double Slit", ImVec2(130, 0))) loadPreset("Double Slit");
+    ImGuiWindowFlags window_flags = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoResize;
+    if (ImGui::Begin("Wave Simulator Control Center", nullptr, window_flags)) {
+        
+        // Menu bar with quick actions - Particle Life style
+        if (ImGui::BeginMenuBar()) {
+            if (ImGui::BeginMenu("Presets")) {
+                if (ImGui::MenuItem("Double Slit")) {
+                    loadPreset("Double Slit");
+                }
+                if (ImGui::MenuItem("Ripple Tank")) {
+                    loadPreset("Ripple Tank");
+                }
+                if (ImGui::MenuItem("Wave Interference")) {
+                    loadPreset("Wave Interference");
+                }
+                if (ImGui::MenuItem("Reflection Demo")) {
+                    loadPreset("Reflection Demo");
+                }
+                if (ImGui::MenuItem("Circular Arena")) {
+                    loadPreset("Circular Arena");
+                }
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu("Actions")) {
+                if (ImGui::MenuItem("Clear All", "R")) {
+                    clearWaves();
+                    clearWalls();
+                    clearSources();
+                }
+                if (ImGui::MenuItem("Clear Waves", "C")) {
+                    clearWaves();
+                }
+                if (ImGui::MenuItem("Take Screenshot", "P")) {
+                    takeScreenshot();
+                }
+                ImGui::EndMenu();
+            }
+            ImGui::EndMenuBar();
+        }
+        
+        // Status section - modern style
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.9f, 1.0f, 1.0f));
+        ImGui::Text("STATUS");
+        ImGui::PopStyleColor();
+        ImGui::Separator();
+        
+        ImGui::Text("Wave Sources: %zu", g_sim.sources.size());
+        ImGui::Text("Simulation Time: %.2f s", g_sim.time);
+        ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+        ImGui::Spacing();
+        
+        // Quick controls section
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.9f, 1.0f, 1.0f));
+        ImGui::Text("SIMULATION CONTROLS");
+        ImGui::PopStyleColor();
+        ImGui::Separator();
+        
+        // Modern button layout
+        if (ImGui::Button(g_sim.paused ? "▶ Resume" : "⏸ Pause", ImVec2(100, 0))) {
+            g_sim.paused = !g_sim.paused;
+        }
         ImGui::SameLine();
-        if (ImGui::Button("Ripple Tank", ImVec2(130, 0))) loadPreset("Ripple Tank");
-        
-        if (ImGui::Button("Interference", ImVec2(130, 0))) loadPreset("Interference");
+        if (ImGui::Button("🔄 Reset All", ImVec2(100, 0))) {
+            clearWaves();
+            clearWalls();
+            clearSources();
+        }
         ImGui::SameLine();
-        if (ImGui::Button("Reflection", ImVec2(130, 0))) loadPreset("Reflection");
+        if (ImGui::Button("📸 Screenshot", ImVec2(100, 0))) {
+            takeScreenshot();
+        }
         
-        if (ImGui::Button("Circular Arena", ImVec2(130, 0))) loadPreset("Circular Arena");
-    }
-    
-    // Tools
-    if (ImGui::CollapsingHeader("Tools", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::RadioButton("Add Source", (int*)&g_sim.currentTool, (int)Tool::ADD_SOURCE);
-        ImGui::RadioButton("Remove Source", (int*)&g_sim.currentTool, (int)Tool::REMOVE_SOURCE);
-        ImGui::RadioButton("Draw Wall (Drag)", (int*)&g_sim.currentTool, (int)Tool::DRAW_WALL);
-        ImGui::RadioButton("Erase Wall (Drag)", (int*)&g_sim.currentTool, (int)Tool::ERASE_WALL);
-        ImGui::RadioButton("Snap Wall (2 Clicks)", (int*)&g_sim.currentTool, (int)Tool::SNAP_WALL);
+        if (ImGui::Button("🌊 Clear Waves", ImVec2(100, 0))) {
+            clearWaves();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("🧱 Clear Walls", ImVec2(100, 0))) {
+            clearWalls();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("🎯 Clear Sources", ImVec2(100, 0))) {
+            clearSources();
+        }
         
+        ImGui::SliderFloat("Time Scale", &g_sim.timeScale, 0.1f, 5.0f, "%.1fx");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Adjust simulation speed");
+        }
+        ImGui::Spacing();
+        
+        // Interaction tools section
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.9f, 1.0f, 1.0f));
+        ImGui::Text("INTERACTION TOOLS");
+        ImGui::PopStyleColor();
+        ImGui::Separator();
+        
+        // Mode selection with better styling
+        ImGui::RadioButton("🌊 Interact Mode", (int*)&g_sim.currentTool, (int)Tool::INTERACT);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Click anywhere to create ripple effects");
+        }
+        
+        ImGui::RadioButton("➕ Add Source", (int*)&g_sim.currentTool, (int)Tool::ADD_SOURCE);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Place persistent wave sources");
+        }
+        
+        ImGui::RadioButton("❌ Remove Source", (int*)&g_sim.currentTool, (int)Tool::REMOVE_SOURCE);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Click to remove wave sources");
+        }
+        
+        ImGui::RadioButton("🖊️ Draw Wall", (int*)&g_sim.currentTool, (int)Tool::DRAW_WALL);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Drag to draw barriers");
+        }
+        
+        ImGui::RadioButton("🧽 Erase Wall", (int*)&g_sim.currentTool, (int)Tool::ERASE_WALL);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Drag to remove barriers");
+        }
+        
+        ImGui::RadioButton("📏 Snap Wall", (int*)&g_sim.currentTool, (int)Tool::SNAP_WALL);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Two-click mode for straight walls");
+        }
+        
+        // Tool-specific controls
         if (g_sim.currentTool == Tool::SNAP_WALL) {
-            ImGui::Spacing();
+            ImGui::Indent();
             if (g_sim.snapWallFirstPoint) {
-                ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "Click first point...");
+                ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "📍 Click first point...");
             } else {
-                ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "Click second point...");
+                ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "📍 Click second point...");
                 ImGui::Text("First: (%d, %d)", g_sim.snapWallX1, g_sim.snapWallY1);
             }
+            ImGui::Unindent();
         }
         
         if (g_sim.currentTool == Tool::ADD_SOURCE) {
-            ImGui::Spacing();
+            ImGui::Indent();
             ImGui::Text("New Source Parameters:");
-            ImGui::SliderFloat("Frequency##new", &g_sim.newSourceFreq, 0.5f, 10.0f, "%.1f Hz");
-            ImGui::SliderFloat("Amplitude##new", &g_sim.newSourceAmp, 0.5f, 5.0f, "%.2f");
+            ImGui::SliderFloat("Frequency", &g_sim.newSourceFreq, 0.5f, 10.0f, "%.1f Hz");
+            ImGui::SliderFloat("Amplitude", &g_sim.newSourceAmp, 0.5f, 5.0f, "%.2f");
+            ImGui::Unindent();
         }
-    }
-    
-    // Physics
-    if (ImGui::CollapsingHeader("Physics", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Spacing();
+        
+        // Physics section
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.9f, 1.0f, 1.0f));
+        ImGui::Text("PHYSICS PARAMETERS");
+        ImGui::PopStyleColor();
+        ImGui::Separator();
+        
         ImGui::SliderFloat("Wave Speed", &g_sim.waveSpeed, 0.5f, 50.0f, "%.2f");
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("Speed of wave propagation");
@@ -677,79 +809,93 @@ void renderGUI() {
         
         ImGui::SliderFloat("Damping", &g_sim.damping, 0.98f, 0.9999f, "%.4f");
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Higher = less energy loss");
+            ImGui::SetTooltip("Energy loss factor (higher = less damping)");
         }
-    }
-    
-    // Visual
-    if (ImGui::CollapsingHeader("Visual")) {
-        ImGui::Text("Color Mode:");
-        ImGui::RadioButton("Blue-Red", (int*)&g_sim.colorMode, (int)Simulation::BLUE_RED);
-        ImGui::RadioButton("Rainbow", (int*)&g_sim.colorMode, (int)Simulation::RAINBOW);
-        ImGui::RadioButton("Grayscale", (int*)&g_sim.colorMode, (int)Simulation::GRAYSCALE);
-        ImGui::RadioButton("Cyan-Yellow", (int*)&g_sim.colorMode, (int)Simulation::CYAN_YELLOW);
-        
         ImGui::Spacing();
-        ImGui::Checkbox("Show Sources", &g_sim.showSources);
-        ImGui::Checkbox("Show Walls", &g_sim.showWalls);
+        
+        // Visual effects section
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.9f, 1.0f, 1.0f));
+        ImGui::Text("VISUAL EFFECTS");
+        ImGui::PopStyleColor();
+        ImGui::Separator();
+        
+        const char* visualModes[] = { "Rainbow", "Grayscale", "Blue-Red", "Green-Orange" };
+        ImGui::Combo("Visualization", &g_sim.visualMode, visualModes, IM_ARRAYSIZE(visualModes));
+        
         ImGui::Checkbox("Show Grid", &g_sim.showGrid);
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "(G key)");
         
-        if (g_sim.showGrid) {
-            ImGui::SliderInt("Grid Spacing", &g_sim.gridSpacing, 16, 128);
+        ImGui::SliderFloat("Contrast", &g_sim.contrast, 0.5f, 5.0f, "%.2f");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Adjust wave visualization contrast");
         }
-    }
-    
-    // Quick actions
-    if (ImGui::CollapsingHeader("Quick Actions")) {
-        if (ImGui::Button("Clear Walls Only", ImVec2(-1, 0))) {
-            clearWalls();
-        }
-        if (ImGui::Button("Clear Sources Only", ImVec2(-1, 0))) {
-            clearSources();
-        }
-    }
-    
-    // Wave sources list
-    if (ImGui::CollapsingHeader("Wave Sources", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::BeginChild("SourcesList", ImVec2(0, 250), true);
-        
-        auto& sources = g_sim.sources;
-        for (size_t i = 0; i < sources.size(); i++) {
-            ImGui::PushID(static_cast<int>(i));
-            
-            ImGui::Text("%s", sources[i].name.c_str());
-            ImGui::Text("Position: (%.0f, %.0f)", sources[i].x, sources[i].y);
-            
-            ImGui::SliderFloat("Freq", &sources[i].frequency, 0.5f, 100.0f, "%.1f Hz");
-            ImGui::SliderFloat("Amp", &sources[i].amplitude, 0.0f, 5.0f, "%.2f");
-            ImGui::Checkbox("Active", &sources[i].active);
-            
-            if (ImGui::Button("Remove", ImVec2(-1, 0))) {
-                sources.erase(sources.begin() + i);
-                ImGui::PopID();
-                break;
-            }
-            
-            ImGui::Separator();
-            ImGui::PopID();
-        }
-        
-        ImGui::EndChild();
-    }
-    
-    // Instructions
-    if (ImGui::CollapsingHeader("Instructions")) {
-        ImGui::TextWrapped("Click on the simulation to:");
-        ImGui::BulletText("Add wave sources");
-        ImGui::BulletText("Remove sources");
-        ImGui::BulletText("Draw walls (click & drag)");
-        ImGui::BulletText("Erase walls (click & drag)");
-        ImGui::BulletText("Snap wall (2 clicks for line)");
         ImGui::Spacing();
-        ImGui::TextWrapped("Try the presets to see classic wave phenomena!");
+        
+        // Wave sources management
+        if (g_sim.sources.size() > 0) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.9f, 1.0f, 1.0f));
+            ImGui::Text("WAVE SOURCES (%zu)", g_sim.sources.size());
+            ImGui::PopStyleColor();
+            ImGui::Separator();
+            
+            ImGui::BeginChild("SourcesList", ImVec2(0, 200), true);
+            for (size_t i = 0; i < g_sim.sources.size(); i++) {
+                auto& source = g_sim.sources[i];
+                
+                ImGui::PushID((int)i);
+                
+                // Source header with status
+                ImGui::Text("🌊 %s", source.name.c_str());
+                ImGui::SameLine();
+                if (ImGui::SmallButton(source.active ? "🟢 ON" : "🔴 OFF")) {
+                    source.active = !source.active;
+                }
+                ImGui::SameLine();
+                if (ImGui::SmallButton("❌ Delete")) {
+                    g_sim.sources.erase(g_sim.sources.begin() + i);
+                    ImGui::PopID();
+                    break;
+                }
+                
+                // Source parameters
+                ImGui::Text("Position: (%.0f, %.0f)", source.x, source.y);
+                ImGui::SliderFloat("Freq##freq", &source.frequency, 0.5f, 10.0f, "%.1f Hz");
+                ImGui::SliderFloat("Amp##amp", &source.amplitude, 0.1f, 5.0f, "%.2f");
+                
+                ImGui::Separator();
+                ImGui::PopID();
+            }
+            ImGui::EndChild();
+        }
+        
+        // Keyboard shortcuts section  
+        if (ImGui::CollapsingHeader("⌨️ Keyboard Shortcuts")) {
+            ImGui::BulletText("SPACE - Pause/Resume simulation");
+            ImGui::BulletText("P - Take screenshot");
+            ImGui::BulletText("R - Reset everything");
+            ImGui::BulletText("C - Clear waves only");
+            ImGui::BulletText("G - Toggle grid");
+            ImGui::BulletText("ESC - Cancel snap wall mode");
+        }
     }
-    
     ImGui::End();
+    
+    // Screenshot notification (same as before)
+    if (g_sim.showScreenshotNotification) {
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - g_sim.screenshotNotificationTime).count();
+        
+        if (elapsed < 3000) {  // Show for 3 seconds
+            ImGui::SetNextWindowPos(ImVec2(10, SCREEN_HEIGHT - 60), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(300, 50), ImGuiCond_Always);
+            ImGui::Begin("Screenshot Notification", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar);
+            ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "📸 Screenshot saved successfully!");
+            ImGui::End();
+        } else {
+            g_sim.showScreenshotNotification = false;
+        }
+    }
     
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -792,6 +938,8 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
             clearWaves();
         } else if (key == GLFW_KEY_G) {
             g_sim.showGrid = !g_sim.showGrid;
+        } else if (key == GLFW_KEY_P) {
+            takeScreenshot();
         } else if (key == GLFW_KEY_ESCAPE) {
             // Cancel snap wall mode
             if (g_sim.currentTool == Tool::SNAP_WALL && !g_sim.snapWallFirstPoint) {
@@ -829,6 +977,29 @@ void handleMouseInput(GLFWwindow* window) {
         g_sim.lastMouseX = gridX;
         g_sim.lastMouseY = gridY;
         
+    } else if (g_sim.currentTool == Tool::INTERACT) {
+        // Create ripple effect at mouse position
+        if (g_sim.lastMouseX == -1) {
+            // Create a ripple effect
+            int radius = 15;
+            float amplitude = 2.0f;
+            
+            for (int dy = -radius; dy <= radius; dy++) {
+                for (int dx = -radius; dx <= radius; dx++) {
+                    int nx = gridX + dx;
+                    int ny = gridY + dy;
+                    if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE) {
+                        float dist = std::sqrt(dx*dx + dy*dy);
+                        if (dist <= radius && !g_sim.walls[ny * GRID_SIZE + nx]) {
+                            float falloff = 1.0f - (dist / radius);
+                            g_sim.u[ny * GRID_SIZE + nx] += amplitude * falloff * falloff;
+                        }
+                    }
+                }
+            }
+        }
+        g_sim.lastMouseX = gridX;
+        g_sim.lastMouseY = gridY;
     } else if (g_sim.currentTool == Tool::REMOVE_SOURCE) {
         // Single click to remove source
         if (g_sim.lastMouseX == -1) {
@@ -929,6 +1100,7 @@ int main() {
     std::cout << "  R - Reset everything" << std::endl;
     std::cout << "  C - Clear waves only" << std::endl;
     std::cout << "  G - Toggle grid" << std::endl;
+    std::cout << "  P - Take screenshot" << std::endl;
     std::cout << "  ESC - Cancel snap wall mode" << std::endl;
     std::cout << "  Left Click - Use selected tool" << std::endl;
     std::cout << "\nNew Features:" << std::endl;
