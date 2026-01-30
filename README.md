@@ -1,7 +1,7 @@
 # Wave Simulator
 
-![Screenshot 1](screenshots/wave1.png)
-![Screenshot 2](screenshots/wave3.png)
+![Screenshot 1](screenshots/wave_sim_20260129_202937_742.png)
+![Screenshot 2](screenshots/wave_sim_20260129_202941_947.png)
 
 A real-time 2D wave propagation simulator built with OpenGL and C++. Experience classic wave phenomena like interference, diffraction, and reflection through an interactive visualization.
 

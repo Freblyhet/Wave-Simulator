@@ -222,8 +222,21 @@ void clearSources() {
 // Screenshot functionality
 void takeScreenshot() {
     // Create screenshots directory if it doesn't exist
-    std::string projectRoot = std::filesystem::current_path().string();
-    std::string screenshotsDir = projectRoot + "/WaveSimScreenshots";
+    // Get the directory where the executable is located
+    std::string executablePath = std::filesystem::current_path().string();
+    std::string screenshotsDir = executablePath + "/screenshots";
+    
+    // Try to find the project root by looking for CMakeLists.txt or src/ directory
+    std::filesystem::path currentDir = std::filesystem::current_path();
+    while (currentDir.has_parent_path()) {
+        if (std::filesystem::exists(currentDir / "CMakeLists.txt") || 
+            std::filesystem::exists(currentDir / "src")) {
+            screenshotsDir = currentDir.string() + "/screenshots";
+            break;
+        }
+        currentDir = currentDir.parent_path();
+    }
+    
     std::filesystem::create_directories(screenshotsDir);
     
     // Generate timestamp for filename
