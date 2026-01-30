@@ -17,14 +17,21 @@
 #include <filesystem>
 
 // Window
-const int SCREEN_WIDTH = 1400;
-const int SCREEN_HEIGHT = 900;
-const int SIDEBAR_WIDTH = 350;  // Width of the side panel
+const int UI_WIDTH_LOGICAL = 350;  // Width of the side panel
+const int UI_GAP_LOGICAL = 20;      // Gap between simulation and UI
+const int SIMULATION_SIZE = 900;  // Square simulation region
+const int SCREEN_WIDTH = SIMULATION_SIZE + UI_WIDTH_LOGICAL + UI_GAP_LOGICAL;  // 1270
+const int SCREEN_HEIGHT = SIMULATION_SIZE;  // 900
 
-static void getSizes(GLFWwindow* window, int& fbW, int& fbH, int& viewportW, int& viewportH) {
+static void getSizes(GLFWwindow* window, int& fbW, int& fbH, int& viewportW, int& viewportH, float& uiWidthPx, float& uiGapPx) {
     // Use framebuffer size (pixels) so resizing and HiDPI behave correctly.
     glfwGetFramebufferSize(window, &fbW, &fbH);
-    viewportW = std::max(1, fbW - SIDEBAR_WIDTH);
+    int screenW, screenH;
+    glfwGetWindowSize(window, &screenW, &screenH);
+    float scale = static_cast<float>(fbW) / static_cast<float>(screenW);
+    uiWidthPx = UI_WIDTH_LOGICAL * scale;
+    uiGapPx = UI_GAP_LOGICAL * scale;
+    viewportW = std::max(1, static_cast<int>(fbW - uiWidthPx - uiGapPx));
     viewportH = std::max(1, fbH);
 }
 
@@ -51,7 +58,8 @@ enum class Tool {
     DRAW_WALL,
     ERASE_WALL,
     SNAP_WALL,
-    INTERACT
+    INTERACT,
+    MOVE_SOURCE
 };
 
 // Simulation state
@@ -68,6 +76,7 @@ struct Simulation {
     // Keeping waveSpeed moderate (and dt stable) dramatically improves visual quality.
     float waveSpeed = 6.0f;
     float damping = 0.9995f;
+    float wallReflectivity = 1.0f;  // 1.0 = perfect reflection, 0.0 = full absorption
     float dt = 1.0f / 60.0f; // base (used as a clamp/target)
     
     // Tools and interaction
@@ -84,6 +93,9 @@ struct Simulation {
     bool mousePressed = false;
     int lastMouseX = -1;
     int lastMouseY = -1;
+    
+    // Move source mode
+    int draggedSourceIndex = -1;
     
     // Snap wall mode
     bool snapWallFirstPoint = true;
@@ -297,6 +309,92 @@ void loadPreset(const std::string& name) {
         
         // Source in center
         addSource(cx, cy, 3.0f, 1.8f);
+    } else if (name == "Standing Waves") {
+        // Two opposing sources with same frequency
+        addSource(GRID_SIZE * 0.2f, GRID_SIZE * 0.5f, 4.0f, 2.0f);
+        addSource(GRID_SIZE * 0.8f, GRID_SIZE * 0.5f, 4.0f, 2.0f);
+        
+        // Side walls to create resonance chamber
+        for (int y = GRID_SIZE * 0.3f; y < GRID_SIZE * 0.7f; y++) {
+            setWall(GRID_SIZE * 0.1f, y, true);
+            setWall(GRID_SIZE * 0.9f, y, true);
+        }
+    } else if (name == "Lens Focus") {
+        // Parabolic mirror/lens shape
+        float cx = GRID_SIZE * 0.5f;
+        float focusX = GRID_SIZE * 0.2f;
+        float parabolaWidth = GRID_SIZE * 0.3f;
+        
+        for (int y = 0; y < GRID_SIZE; y++) {
+            for (int x = GRID_SIZE * 0.6f; x < GRID_SIZE * 0.9f; x++) {
+                float dy = y - cx;
+                float parabolaX = GRID_SIZE * 0.75f + (dy * dy) / (4.0f * parabolaWidth);
+                if (std::abs(x - parabolaX) < 3) {
+                    g_sim.walls[y * GRID_SIZE + x] = true;
+                }
+            }
+        }
+        
+        // Source at focus point
+        addSource(focusX, cx, 3.5f, 2.0f);
+    } else if (name == "Corner Cavity") {
+        // L-shaped cavity
+        // Horizontal wall
+        for (int x = GRID_SIZE * 0.2f; x < GRID_SIZE * 0.8f; x++) {
+            for (int y = GRID_SIZE * 0.48f; y < GRID_SIZE * 0.52f; y++) {
+                if (x < GRID_SIZE * 0.5f) {
+                    setWall(x, y, true);
+                }
+            }
+        }
+        // Vertical wall
+        for (int y = GRID_SIZE * 0.2f; y < GRID_SIZE * 0.8f; y++) {
+            for (int x = GRID_SIZE * 0.48f; x < GRID_SIZE * 0.52f; x++) {
+                if (y > GRID_SIZE * 0.5f) {
+                    setWall(x, y, true);
+                }
+            }
+        }
+        
+        // Sources in corners
+        addSource(GRID_SIZE * 0.3f, GRID_SIZE * 0.3f, 3.0f, 1.5f);
+        addSource(GRID_SIZE * 0.7f, GRID_SIZE * 0.7f, 3.0f, 1.5f);
+    } else if (name == "Wave Guide") {
+        // Channel walls
+        for (int x = GRID_SIZE * 0.1f; x < GRID_SIZE * 0.9f; x++) {
+            for (int y = GRID_SIZE * 0.35f; y < GRID_SIZE * 0.4f; y++) {
+                setWall(x, y, true);
+            }
+            for (int y = GRID_SIZE * 0.6f; y < GRID_SIZE * 0.65f; y++) {
+                setWall(x, y, true);
+            }
+        }
+        
+        // Source at entrance
+        addSource(GRID_SIZE * 0.15f, GRID_SIZE * 0.5f, 4.0f, 2.0f);
+    } else if (name == "Multiple Slits") {
+        // Source at top
+        addSource(GRID_SIZE * 0.5f, GRID_SIZE * 0.15f, 4.0f, 2.0f);
+        
+        // Wall with multiple slits (diffraction grating)
+        for (int x = GRID_SIZE * 0.2f; x < GRID_SIZE * 0.8f; x++) {
+            for (int y = GRID_SIZE * 0.45f; y < GRID_SIZE * 0.5f; y++) {
+                // Create 5 slits
+                int slitWidth = GRID_SIZE * 0.02f;
+                int slitSpacing = GRID_SIZE * 0.1f;
+                bool inSlit = false;
+                for (int i = 0; i < 5; i++) {
+                    int slitCenter = GRID_SIZE * 0.3f + i * slitSpacing;
+                    if (std::abs(x - slitCenter) < slitWidth) {
+                        inSlit = true;
+                        break;
+                    }
+                }
+                if (!inSlit) {
+                    setWall(x, y, true);
+                }
+            }
+        }
     }
     
     std::cout << "Loaded preset: " << name << std::endl;
@@ -329,7 +427,9 @@ void updateSimulation(float deltaTime) {
                 int idx = y * GRID_SIZE + x;
 
                 if (g_sim.walls[idx]) {
-                    g_sim.u[idx] = 0.0f;
+                    // Apply wall reflectivity: mix between absorption and reflection
+                    // Perfect reflection (1.0) inverts the wave, full absorption (0.0) zeros it
+                    g_sim.u[idx] = -g_sim.u_prev[idx] * g_sim.wallReflectivity;
                     continue;
                 }
 
@@ -679,15 +779,17 @@ void renderGUI() {
     
     // Create side panel docked to the right, based on current display size.
     ImGuiIO& io = ImGui::GetIO();
-    const float sidebarWidth = static_cast<float>(SIDEBAR_WIDTH);
     const float screenW = io.DisplaySize.x;
     const float screenH = io.DisplaySize.y;
-    const float viewportW = std::max(1.0f, screenW - sidebarWidth);
-    ImGui::SetNextWindowPos(ImVec2(viewportW, 0.0f), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(sidebarWidth, screenH), ImGuiCond_Always);
+    const float uiWidthLogical = static_cast<float>(UI_WIDTH_LOGICAL);
+    const float uiGapLogical = static_cast<float>(UI_GAP_LOGICAL);
+    const float uiStartX = screenW - uiWidthLogical - uiGapLogical;
+    ImGui::SetNextWindowPos(ImVec2(uiStartX, 0.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(uiWidthLogical, screenH), ImGuiCond_Always);
 
     ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | 
-                                   ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_MenuBar;
+                                   ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_MenuBar |
+                                   ImGuiWindowFlags_NoBringToFrontOnFocus;
     if (ImGui::Begin("Control Panel", nullptr, window_flags)) {
         
         // Menu bar with quick actions - Particle Life style
@@ -696,14 +798,29 @@ void renderGUI() {
                 if (ImGui::MenuItem("Double Slit")) {
                     loadPreset("Double Slit");
                 }
+                if (ImGui::MenuItem("Multiple Slits")) {
+                    loadPreset("Multiple Slits");
+                }
                 if (ImGui::MenuItem("Ripple Tank")) {
                     loadPreset("Ripple Tank");
                 }
                 if (ImGui::MenuItem("Wave Interference")) {
                     loadPreset("Wave Interference");
                 }
+                if (ImGui::MenuItem("Standing Waves")) {
+                    loadPreset("Standing Waves");
+                }
                 if (ImGui::MenuItem("Reflection Demo")) {
                     loadPreset("Reflection Demo");
+                }
+                if (ImGui::MenuItem("Lens Focus")) {
+                    loadPreset("Lens Focus");
+                }
+                if (ImGui::MenuItem("Wave Guide")) {
+                    loadPreset("Wave Guide");
+                }
+                if (ImGui::MenuItem("Corner Cavity")) {
+                    loadPreset("Corner Cavity");
                 }
                 if (ImGui::MenuItem("Circular Arena")) {
                     loadPreset("Circular Arena");
@@ -727,48 +844,101 @@ void renderGUI() {
             ImGui::EndMenuBar();
         }
         
-        // Status section - modern style
+        // Status section - clean modern style
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.9f, 1.0f, 1.0f));
         ImGui::Text("STATUS");
         ImGui::PopStyleColor();
         ImGui::Separator();
         
+        // Status with colored indicators
         ImGui::Text("Wave Sources: %zu", g_sim.sources.size());
         ImGui::Text("Simulation Time: %.2f s", g_sim.time);
-        ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+        
+        // FPS with color coding
+        float fps = ImGui::GetIO().Framerate;
+        ImVec4 fpsColor = fps > 50 ? ImVec4(0.2f, 1.0f, 0.3f, 1.0f) : 
+                         fps > 30 ? ImVec4(1.0f, 0.8f, 0.2f, 1.0f) : 
+                                   ImVec4(1.0f, 0.3f, 0.2f, 1.0f);
+        ImGui::TextColored(fpsColor, "FPS: %.1f", fps);
+        
+        // FPS progress bar
+        float fpsNormalized = std::min(fps / 60.0f, 1.0f);
+        ImGui::ProgressBar(fpsNormalized, ImVec2(-1, 0), "");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Frame rate (target: 60 FPS)");
+        }
         ImGui::Spacing();
         
-        // Quick controls section
+        // Simulation controls section
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.9f, 1.0f, 1.0f));
         ImGui::Text("SIMULATION CONTROLS");
         ImGui::PopStyleColor();
         ImGui::Separator();
         
-        // Modern button layout
-        if (ImGui::Button(g_sim.paused ? "▶ Resume" : "⏸ Pause", ImVec2(100, 0))) {
+        // Pause/Resume button with color coding
+        ImVec4 pauseColor = g_sim.paused ? ImVec4(0.2f, 1.0f, 0.3f, 1.0f) : ImVec4(1.0f, 0.6f, 0.2f, 1.0f);
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(pauseColor.x * 0.3f, pauseColor.y * 0.3f, pauseColor.z * 0.3f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(pauseColor.x * 0.5f, pauseColor.y * 0.5f, pauseColor.z * 0.5f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(pauseColor.x * 0.7f, pauseColor.y * 0.7f, pauseColor.z * 0.7f, 1.0f));
+        if (ImGui::Button(g_sim.paused ? "Resume" : "Pause", ImVec2(-1, 30))) {
             g_sim.paused = !g_sim.paused;
         }
-        ImGui::SameLine();
-        if (ImGui::Button("🔄 Reset All", ImVec2(100, 0))) {
-            clearWaves();
-            clearWalls();
-            clearSources();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("📸 Screenshot", ImVec2(100, 0))) {
-            takeScreenshot();
+        ImGui::PopStyleColor(3);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(g_sim.paused ? "Resume simulation (SPACE)" : "Pause simulation (SPACE)");
         }
         
-        if (ImGui::Button("🌊 Clear Waves", ImVec2(100, 0))) {
+        // Quick action buttons
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f * 0.3f, 0.7f * 0.3f, 1.0f * 0.3f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.2f * 0.5f, 0.7f * 0.5f, 1.0f * 0.5f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.2f * 0.7f, 0.7f * 0.7f, 1.0f * 0.7f, 1.0f));
+        if (ImGui::Button("Screenshot", ImVec2(-1, 30))) {
+            takeScreenshot();
+        }
+        ImGui::PopStyleColor(3);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Save screenshot (P)");
+        }
+        
+        // Clear waves button
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f * 0.3f, 0.6f * 0.3f, 0.8f * 0.3f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.2f * 0.5f, 0.6f * 0.5f, 0.8f * 0.5f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.2f * 0.7f, 0.6f * 0.7f, 0.8f * 0.7f, 1.0f));
+        if (ImGui::Button("Clear Waves", ImVec2(-1, 30))) {
             clearWaves();
         }
-        ImGui::SameLine();
-        if (ImGui::Button("🧱 Clear Walls", ImVec2(100, 0))) {
+        ImGui::PopStyleColor(3);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Clear wave displacement (C)");
+        }
+        
+        // Destructive actions with red tint
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f * 0.3f, 0.2f * 0.3f, 0.2f * 0.3f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.6f * 0.5f, 0.2f * 0.5f, 0.2f * 0.5f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.6f * 0.7f, 0.2f * 0.7f, 0.2f * 0.7f, 1.0f));
+        
+        if (ImGui::Button("Clear Walls", ImVec2(-1, 30))) {
             clearWalls();
         }
-        ImGui::SameLine();
-        if (ImGui::Button("🎯 Clear Sources", ImVec2(100, 0))) {
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Remove all wall barriers");
+        }
+        
+        if (ImGui::Button("Clear Sources", ImVec2(-1, 30))) {
             clearSources();
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Remove all wave sources");
+        }
+        
+        if (ImGui::Button("Reset All", ImVec2(-1, 30))) {
+            clearWaves();
+            clearWalls();
+            clearSources();
+        }
+        ImGui::PopStyleColor(3);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Clear everything (R)");
         }
         
         ImGui::SliderFloat("Time Scale", &g_sim.timeScale, 0.1f, 5.0f, "%.1fx");
@@ -783,33 +953,38 @@ void renderGUI() {
         ImGui::PopStyleColor();
         ImGui::Separator();
         
-        // Mode selection with better styling
-        ImGui::RadioButton("🌊 Interact Mode", (int*)&g_sim.currentTool, (int)Tool::INTERACT);
+        // Mode selection with clean styling
+        ImGui::RadioButton("Interact Mode", (int*)&g_sim.currentTool, (int)Tool::INTERACT);
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("Click anywhere to create ripple effects");
         }
         
-        ImGui::RadioButton("➕ Add Source", (int*)&g_sim.currentTool, (int)Tool::ADD_SOURCE);
+        ImGui::RadioButton("Add Source", (int*)&g_sim.currentTool, (int)Tool::ADD_SOURCE);
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("Place persistent wave sources");
         }
         
-        ImGui::RadioButton("❌ Remove Source", (int*)&g_sim.currentTool, (int)Tool::REMOVE_SOURCE);
+        ImGui::RadioButton("Remove Source", (int*)&g_sim.currentTool, (int)Tool::REMOVE_SOURCE);
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("Click to remove wave sources");
         }
         
-        ImGui::RadioButton("🖊️ Draw Wall", (int*)&g_sim.currentTool, (int)Tool::DRAW_WALL);
+        ImGui::RadioButton("Move Source", (int*)&g_sim.currentTool, (int)Tool::MOVE_SOURCE);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Drag to reposition wave sources");
+        }
+        
+        ImGui::RadioButton("Draw Wall", (int*)&g_sim.currentTool, (int)Tool::DRAW_WALL);
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("Drag to draw barriers");
         }
         
-        ImGui::RadioButton("🧽 Erase Wall", (int*)&g_sim.currentTool, (int)Tool::ERASE_WALL);
+        ImGui::RadioButton("Erase Wall", (int*)&g_sim.currentTool, (int)Tool::ERASE_WALL);
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("Drag to remove barriers");
         }
         
-        ImGui::RadioButton("📏 Snap Wall", (int*)&g_sim.currentTool, (int)Tool::SNAP_WALL);
+        ImGui::RadioButton("Snap Wall", (int*)&g_sim.currentTool, (int)Tool::SNAP_WALL);
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("Two-click mode for straight walls");
         }
@@ -818,9 +993,9 @@ void renderGUI() {
         if (g_sim.currentTool == Tool::SNAP_WALL) {
             ImGui::Indent();
             if (g_sim.snapWallFirstPoint) {
-                ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "📍 Click first point...");
+                ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "Click first point...");
             } else {
-                ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "📍 Click second point...");
+                ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "Click second point...");
                 ImGui::Text("First: (%d, %d)", g_sim.snapWallX1, g_sim.snapWallY1);
             }
             ImGui::Unindent();
@@ -830,7 +1005,13 @@ void renderGUI() {
             ImGui::Indent();
             ImGui::Text("New Source Parameters:");
             ImGui::SliderFloat("Frequency", &g_sim.newSourceFreq, 0.5f, 10.0f, "%.1f Hz");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Wave oscillation frequency");
+            }
             ImGui::SliderFloat("Amplitude", &g_sim.newSourceAmp, 0.5f, 5.0f, "%.2f");
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Wave displacement magnitude");
+            }
             ImGui::Unindent();
         }
         ImGui::Spacing();
@@ -843,12 +1024,17 @@ void renderGUI() {
         
         ImGui::SliderFloat("Wave Speed", &g_sim.waveSpeed, 0.5f, 50.0f, "%.2f");
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Speed of wave propagation");
+            ImGui::SetTooltip("Speed of wave propagation through the medium");
         }
         
         ImGui::SliderFloat("Damping", &g_sim.damping, 0.98f, 0.9999f, "%.4f");
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("Energy loss factor (higher = less damping)");
+        }
+        
+        ImGui::SliderFloat("Wall Reflectivity", &g_sim.wallReflectivity, 0.0f, 1.0f, "%.2f");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Wall reflection coefficient (1.0 = perfect reflection, 0.0 = full absorption)");
         }
         ImGui::Spacing();
         
@@ -858,10 +1044,13 @@ void renderGUI() {
         ImGui::PopStyleColor();
         ImGui::Separator();
         
-    const char* visualModes[] = { "Rainbow", "Grayscale", "Blue-Red", "Cyan-Yellow" };
-        ImGui::Combo("Visualization", &g_sim.visualMode, visualModes, IM_ARRAYSIZE(visualModes));
+        const char* visualModes[] = { "Rainbow", "Grayscale", "Blue-Red", "Cyan-Yellow" };
+        ImGui::Combo("Color Mode", &g_sim.visualMode, visualModes, IM_ARRAYSIZE(visualModes));
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Wave visualization color scheme");
+        }
 
-        // Small preview swatch to make it obvious which scheme is active.
+        // Small preview swatch
         {
             ImVec4 c1, c2, c3;
             switch (g_sim.visualMode) {
@@ -901,6 +1090,9 @@ void renderGUI() {
         ImGui::Checkbox("Show Grid", &g_sim.showGrid);
         ImGui::SameLine();
         ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "(G key)");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Toggle grid overlay");
+        }
         
         ImGui::SliderFloat("Contrast", &g_sim.contrast, 0.5f, 5.0f, "%.2f");
         if (ImGui::IsItemHovered()) {
@@ -922,22 +1114,43 @@ void renderGUI() {
                 ImGui::PushID((int)i);
                 
                 // Source header with status
-                ImGui::Text("🌊 %s", source.name.c_str());
+                ImGui::Text("%s", source.name.c_str());
                 ImGui::SameLine();
-                if (ImGui::SmallButton(source.active ? "🟢 ON" : "🔴 OFF")) {
+                
+                // Status toggle button
+                ImVec4 statusColor = source.active ? ImVec4(0.2f, 1.0f, 0.3f, 1.0f) : ImVec4(0.6f, 0.2f, 0.2f, 1.0f);
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(statusColor.x * 0.3f, statusColor.y * 0.3f, statusColor.z * 0.3f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(statusColor.x * 0.5f, statusColor.y * 0.5f, statusColor.z * 0.5f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(statusColor.x * 0.7f, statusColor.y * 0.7f, statusColor.z * 0.7f, 1.0f));
+                if (ImGui::SmallButton(source.active ? "ON" : "OFF")) {
                     source.active = !source.active;
                 }
+                ImGui::PopStyleColor(3);
+                
                 ImGui::SameLine();
-                if (ImGui::SmallButton("❌ Delete")) {
+                
+                // Delete button
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f * 0.3f, 0.2f * 0.3f, 0.2f * 0.3f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.6f * 0.5f, 0.2f * 0.5f, 0.2f * 0.5f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.6f * 0.7f, 0.2f * 0.7f, 0.2f * 0.7f, 1.0f));
+                if (ImGui::SmallButton("Delete")) {
                     g_sim.sources.erase(g_sim.sources.begin() + i);
+                    ImGui::PopStyleColor(3);
                     ImGui::PopID();
                     break;
                 }
+                ImGui::PopStyleColor(3);
                 
                 // Source parameters
                 ImGui::Text("Position: (%.0f, %.0f)", source.x, source.y);
                 ImGui::SliderFloat("Freq##freq", &source.frequency, 0.5f, 10.0f, "%.1f Hz");
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Oscillation frequency");
+                }
                 ImGui::SliderFloat("Amp##amp", &source.amplitude, 0.1f, 5.0f, "%.2f");
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Wave amplitude");
+                }
                 
                 ImGui::Separator();
                 ImGui::PopID();
@@ -946,7 +1159,7 @@ void renderGUI() {
         }
         
         // Keyboard shortcuts section  
-        if (ImGui::CollapsingHeader("⌨️ Keyboard Shortcuts")) {
+        if (ImGui::CollapsingHeader("Keyboard Shortcuts")) {
             ImGui::BulletText("SPACE - Pause/Resume simulation");
             ImGui::BulletText("P - Take screenshot");
             ImGui::BulletText("R - Reset everything");
@@ -997,7 +1210,9 @@ void mouseCallback(GLFWwindow* window, double x, double y) {
                                ? ImGui::GetIO().DisplayFramebufferScale.y
                                : 1.0f;
 
-    const float viewportW = std::max(1.0f, (static_cast<float>(winW) * fbScaleX) - static_cast<float>(SIDEBAR_WIDTH));
+    const float uiWidthPx = UI_WIDTH_LOGICAL * fbScaleX;
+    const float uiGapPx = UI_GAP_LOGICAL * fbScaleX;
+    const float viewportW = std::max(1.0f, (static_cast<float>(winW) * fbScaleX) - uiWidthPx - uiGapPx);
     const float viewportH = std::max(1.0f, (static_cast<float>(winH) * fbScaleY));
 
     // If the UI is using the mouse, don't update interaction coords.
@@ -1007,9 +1222,10 @@ void mouseCallback(GLFWwindow* window, double x, double y) {
 
     // Only handle mouse input in the simulation viewport (left side)
     // x/y are in window coords; compare against the viewport split in window coords.
-    // Convert the sidebar width to window coords to keep the boundary check consistent.
-    const float sidebarWidthWindow = static_cast<float>(SIDEBAR_WIDTH) / fbScaleX;
-    const float viewportWWindow = std::max(1.0f, static_cast<float>(winW) - sidebarWidthWindow);
+    // Convert the UI width to window coords to keep the boundary check consistent.
+    const float uiWidthLogical = static_cast<float>(UI_WIDTH_LOGICAL);
+    const float uiGapLogical = static_cast<float>(UI_GAP_LOGICAL);
+    const float viewportWWindow = std::max(1.0f, static_cast<float>(winW) - uiWidthLogical - uiGapLogical);
 
     if (static_cast<float>(x) >= viewportWWindow) {
         g_sim.mousePressed = false; // Disable interaction in side panel area
@@ -1029,8 +1245,25 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
     if (button == GLFW_MOUSE_BUTTON_LEFT) {
         if (action == GLFW_PRESS) {
             g_sim.mousePressed = true;
+            
+            // Check if we're starting to drag a source
+            if (g_sim.currentTool == Tool::MOVE_SOURCE) {
+                g_sim.draggedSourceIndex = -1;
+                // Find closest source within range
+                float minDist = 20.0f; // Maximum distance to grab a source
+                for (size_t i = 0; i < g_sim.sources.size(); i++) {
+                    float dx = g_sim.mouseX - g_sim.sources[i].x;
+                    float dy = g_sim.mouseY - g_sim.sources[i].y;
+                    float dist = std::sqrt(dx*dx + dy*dy);
+                    if (dist < minDist) {
+                        g_sim.draggedSourceIndex = static_cast<int>(i);
+                        minDist = dist;
+                    }
+                }
+            }
         } else {
             g_sim.mousePressed = false;
+            g_sim.draggedSourceIndex = -1; // Release dragged source
             // Reset drag state for non-snap tools
             if (g_sim.currentTool != Tool::SNAP_WALL) {
                 g_sim.lastMouseX = -1;
@@ -1091,11 +1324,12 @@ void handleMouseInput(GLFWwindow* window) {
         g_sim.lastMouseY = gridY;
         
     } else if (g_sim.currentTool == Tool::INTERACT) {
-        // Create ripple effect at mouse position
-        if (g_sim.lastMouseX == -1) {
+        // Create ripple effect at mouse position (continuous while dragging)
+        // Only create ripple if mouse has moved to avoid repeated application at same spot
+        if (g_sim.lastMouseX != gridX || g_sim.lastMouseY != gridY) {
             // Create a ripple effect
             int radius = 15;
-            float amplitude = 2.0f;
+            float amplitude = 1.5f;  // Reduced for continuous application
             
             for (int dy = -radius; dy <= radius; dy++) {
                 for (int dx = -radius; dx <= radius; dx++) {
@@ -1120,6 +1354,13 @@ void handleMouseInput(GLFWwindow* window) {
         }
         g_sim.lastMouseX = gridX;
         g_sim.lastMouseY = gridY;
+    
+    } else if (g_sim.currentTool == Tool::MOVE_SOURCE) {
+        // Drag source to new position - update continuously while dragging
+        if (g_sim.draggedSourceIndex >= 0 && g_sim.draggedSourceIndex < static_cast<int>(g_sim.sources.size())) {
+            g_sim.sources[g_sim.draggedSourceIndex].x = std::clamp(static_cast<float>(gridX), 0.0f, static_cast<float>(GRID_SIZE - 1));
+            g_sim.sources[g_sim.draggedSourceIndex].y = std::clamp(static_cast<float>(gridY), 0.0f, static_cast<float>(GRID_SIZE - 1));
+        }
         
     } else if (g_sim.currentTool == Tool::SNAP_WALL) {
         // Two-click snap wall mode
@@ -1224,8 +1465,8 @@ int main() {
     ImVec4* colors = style.Colors;
     colors[ImGuiCol_Text]                   = ImVec4(0.95f, 0.96f, 0.98f, 1.00f);
     colors[ImGuiCol_TextDisabled]           = ImVec4(0.36f, 0.42f, 0.47f, 1.00f);
-    colors[ImGuiCol_WindowBg]               = ImVec4(0.11f, 0.15f, 0.17f, 1.00f);
-    colors[ImGuiCol_ChildBg]                = ImVec4(0.15f, 0.18f, 0.22f, 1.00f);
+    colors[ImGuiCol_WindowBg]               = ImVec4(0.11f, 0.15f, 0.17f, 1.00f);  // Fully opaque
+    colors[ImGuiCol_ChildBg]                = ImVec4(0.15f, 0.18f, 0.22f, 1.00f);  // Fully opaque
     colors[ImGuiCol_PopupBg]                = ImVec4(0.08f, 0.08f, 0.08f, 0.94f);
     colors[ImGuiCol_Border]                 = ImVec4(0.08f, 0.10f, 0.12f, 1.00f);
     colors[ImGuiCol_BorderShadow]           = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
@@ -1305,19 +1546,27 @@ int main() {
         handleMouseInput(window);
         
         // Render
+        // Full window clear with simulation background
+        int fbW = 0, fbH = 0, viewportW = 0, viewportH = 0;
+        float uiWidthPx = 0.0f, uiGapPx = 0.0f;
+        getSizes(window, fbW, fbH, viewportW, viewportH, uiWidthPx, uiGapPx);
+        
+        glViewport(0, 0, fbW, fbH);
         glClearColor(0.05f, 0.05f, 0.08f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-    // Set viewport to simulation area only (left side)
-    int fbW = 0, fbH = 0, viewportW = 0, viewportH = 0;
-    getSizes(window, fbW, fbH, viewportW, viewportH);
-    glViewport(0, 0, viewportW, viewportH);
+        // Set viewport and scissor to simulation area only (left side)
+        glViewport(0, 0, viewportW, viewportH);
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(0, 0, viewportW, fbH);
         
         renderWaves();
         renderGrid();
         
+        glDisable(GL_SCISSOR_TEST);
+        
         // Reset viewport for ImGui rendering
-    glViewport(0, 0, fbW, fbH);
+        glViewport(0, 0, fbW, fbH);
         renderGUI();
         
         glfwSwapBuffers(window);
